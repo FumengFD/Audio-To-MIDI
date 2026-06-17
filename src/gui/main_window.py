@@ -151,9 +151,10 @@ class MainWindow(QMainWindow):
             y_mono = y if y.ndim == 1 else y.mean(0)
             tempo, _ = librosa.beat.beat_track(y=y_mono, sr=sr)
             if tempo > 0:
-                self._bpm_input.setValue(int(round(tempo)))
+                bpm = int(round(float(tempo)))
+                self._bpm_input.setValue(bpm)
                 self._status_label.setText(
-                    f"已加载: {self._audio_path.name}  检测到 {int(round(tempo))} BPM"
+                    f"已加载: {self._audio_path.name}  检测到 {bpm} BPM"
                 )
         except Exception as e:
             QMessageBox.critical(self, "加载失败", str(e))
