@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.spec
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 大文件
+*.exe
+MusicTranscriber.exe
+
+# 扒谱输出
+*_扒谱/
+
+# Python 虚拟环境
+venv/
+.venv/
+
+# Codex / Reasonix
+.codegraph/
+.code-review-graph/
+.reasonix/
+
+# 临时文件
+*.wav
+*.mid
+*.musicxml
+*.pdf
+*.png
+*.gp5
