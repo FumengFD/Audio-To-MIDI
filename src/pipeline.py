@@ -1,10 +1,8 @@
-"""总管线编排 — Demucs 分轨 → 专用模型转录 → 合并"""
+"""总管线编排 — Demucs 分轨 → 专用模型转录 → 输出各轨 MIDI"""
 
 from pathlib import Path
 import pretty_midi
 
-from .midi.merger import MidiMerger
-from .midi.quantizer import MidiQuantizer
 from .separation.demucs_runner import DemucsSeparator
 from .transcription.base import StemType, TrackResult
 from .transcription.drum import DrumTranscriber
@@ -19,8 +17,6 @@ class TranscriptionPipeline:
         self.drum_transcriber = DrumTranscriber()
         self.melodic_transcriber = BasicPitchTranscriber()
         self.piano_transcriber = TranskunTranscriber()
-        self.merger = MidiMerger()
-        self.quantizer = MidiQuantizer()
 
     def run(
         self,
@@ -32,7 +28,7 @@ class TranscriptionPipeline:
         enabled_stems = enabled_stems or ["drums", "bass", "vocals", "guitar", "piano", "other"]
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        # 清理 Demucs 上次残留，避免 WinError 183
+        # 清理 Demucs 上次残留
         import shutil
         for model_name in ["htdemucs", "htdemucs_6s"]:
             old = output_dir / model_name / audio_path.stem
@@ -50,6 +46,7 @@ class TranscriptionPipeline:
         }
 
         track_results = []
+        midi_files = []
         for key in enabled_stems:
             st = stem_map.get(key)
             if st is None or st not in separation.stems:
@@ -62,25 +59,12 @@ class TranscriptionPipeline:
             else:
                 r = self.melodic_transcriber.transcribe(sp, output_dir=output_dir, stem_type=st)
             track_results.append(r)
+            if r.midi_path:
+                midi_files.append(r.midi_path)
 
-        merged = output_dir / f"{audio_path.stem}_merged.mid"
-        merged_pm = self.merger.merge(track_results, merged)
-
-        pm = self.quantizer.quantize(merged_pm, bpm=bpm)
-        quantized = output_dir / f"{audio_path.stem}_quantized.mid"
+        # 覆写 BPM
         if bpm:
-            final = pretty_midi.PrettyMIDI(initial_tempo=bpm)
-            for inst in pm.instruments:
-                final.instruments.append(inst)
-            final.write(str(quantized))
-        else:
-            pm.write(str(quantized))
-
-        # 给所有分轨 MIDI 也覆写 BPM（跳过已处理的 quantized）
-        if bpm:
-            for midi_file in output_dir.glob("*.mid"):
-                if midi_file == quantized:
-                    continue
+            for midi_file in midi_files:
                 try:
                     orig = pretty_midi.PrettyMIDI(str(midi_file))
                     fixed = pretty_midi.PrettyMIDI(initial_tempo=bpm)
@@ -92,7 +76,7 @@ class TranscriptionPipeline:
                     logging.getLogger(__name__).warning(f"BPM rewrite failed for {midi_file.name}: {e}")
 
         return {
-            "midi_path": quantized,
+            "midi_files": midi_files,
             "track_results": track_results,
             "bpm": bpm,
         }

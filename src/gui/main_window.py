@@ -40,7 +40,7 @@ class MainWindow(QMainWindow):
         self._pipeline = TranscriptionPipeline()
         self._audio_path: Path | None = None
         self._output_dir: Path | None = None
-        self._result_midi: pretty_midi.PrettyMIDI | None = None
+        self._result_midi_paths: list[Path] = []
         self._result_midi_path: Path | None = None
 
 
@@ -139,7 +139,7 @@ class MainWindow(QMainWindow):
         self._status_label.setText(f"加载中: {path.name}")
         self._bpm_input.setValue(0)
         self._piano_roll.clear()
-        self._result_midi = None
+        self._result_midi_paths = []
         self._result_midi_path = None
         self._btn_export_midi.setEnabled(False)
         self._btn_transcribe.setEnabled(False)
@@ -213,13 +213,13 @@ class MainWindow(QMainWindow):
     def _on_transcribe_done(self, result: dict):
         self._set_busy(False)
 
-        midi_path = result.get("midi_path")
-        if midi_path and Path(midi_path).exists():
-            self._result_midi_path = Path(midi_path)
+        midi_files = result.get("midi_files", [])
+        if midi_files:
+            self._result_midi_paths = midi_files
+            self._result_midi_path = midi_files[0]
             self._btn_export_midi.setEnabled(True)
-            self._result_midi = None
-            # 后台加载钢琴卷帘
-            self._pr_worker = WorkerThread(self._load_piano_roll, Path(midi_path))
+            # 后台加载钢琴卷帘（合并所有音轨）
+            self._pr_worker = WorkerThread(self._load_piano_roll_all, midi_files)
             self._pr_worker.finished.connect(lambda pm: self._piano_roll.set_midi(pm))
             self._pr_worker.start()
 
@@ -246,16 +246,19 @@ class MainWindow(QMainWindow):
         QMessageBox.critical(self, "扒谱失败", msg)
 
     def _on_export_midi(self):
-        if self._result_midi_path is None:
+        if not hasattr(self, '_result_midi_paths') or not self._result_midi_paths:
             return
 
-        path, _ = QFileDialog.getSaveFileName(
-            self, "导出 MIDI", f"{self._audio_path.stem}.mid", "MIDI (*.mid)",
-        )
-        if path:
-            import shutil
-            shutil.copy(self._result_midi_path, path)
-            self._status_label.setText(f"MIDI 已导出: {Path(path).name}")
+        # 选择导出目录
+        export_dir = QFileDialog.getExistingDirectory(self, "选择导出目录")
+        if not export_dir:
+            return
+
+        import shutil
+        export_dir = Path(export_dir)
+        for midi_path in self._result_midi_paths:
+            shutil.copy(midi_path, export_dir / midi_path.name)
+        self._status_label.setText(f"已导出 {len(self._result_midi_paths)} 个 MIDI")
 
         self._set_busy(False)
         self._status_label.setText(f"转录完成")
@@ -332,8 +335,16 @@ class MainWindow(QMainWindow):
         else:
             self._progress.setRange(0, 100)
 
-    def _load_piano_roll(self, midi_path: Path):
-        return pretty_midi.PrettyMIDI(str(midi_path))
+    def _load_piano_roll_all(self, midi_files: list[Path]):
+        combined = pretty_midi.PrettyMIDI()
+        for f in midi_files:
+            try:
+                pm = pretty_midi.PrettyMIDI(str(f))
+                for inst in pm.instruments:
+                    combined.instruments.append(inst)
+            except Exception:
+                pass
+        return combined
 
     def closeEvent(self, event):
         for attr in ["_worker", "_batch_worker", ""]:
