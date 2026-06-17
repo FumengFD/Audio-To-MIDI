@@ -69,6 +69,10 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(self._btn_import)
         toolbar.addWidget(self._btn_transcribe)
         toolbar.addWidget(self._btn_export_midi)
+        self._btn_export_mscz = QPushButton("📄 导出 MSCZ")
+        self._btn_export_mscz.clicked.connect(self._on_export_mscz)
+        self._btn_export_mscz.setEnabled(False)
+        toolbar.addWidget(self._btn_export_mscz)
         toolbar.addWidget(self._btn_batch)
         from PySide6.QtWidgets import QSpinBox
 
@@ -212,6 +216,7 @@ class MainWindow(QMainWindow):
             self._piano_roll.set_midi(pm)
             self._result_midi = pm
             self._btn_export_midi.setEnabled(True)
+            self._btn_export_mscz.setEnabled(True)
 
 
         self._status_label.setText(f"扒谱完成 — {self._output_dir}")
@@ -246,7 +251,37 @@ class MainWindow(QMainWindow):
             shutil.copy(self._result_midi_path, path)
             self._status_label.setText(f"MIDI 已导出: {Path(path).name}")
 
+    def _on_export_mscz(self):
+        if self._result_midi_path is None:
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "导出 MuseScore 乐谱", f"{self._audio_path.stem}.mscz",
+            "MuseScore (*.mscz)",
+        )
+        if not path:
+            return
+        self._set_busy(True)
+        self._status_label.setText("正在生成 MSCZ…")
+        self._progress.setRange(0, 0)
+        self._progress.show()
+        self._mscz_worker = WorkerThread(self._run_midi2mscz, self._result_midi_path, Path(path))
+        self._mscz_worker.finished.connect(lambda p: self._on_mscz_done(p))
+        self._mscz_worker.error.connect(lambda e: QMessageBox.critical(self, "MSCZ 失败", str(e)))
+        self._mscz_worker.start()
 
+    @staticmethod
+    def _run_midi2mscz(midi_path: Path, output_path: Path) -> Path:
+        from src.score.midi2mscz import pipeline_midi
+        import shutil
+        result = pipeline_midi(midi_path)
+        if result != output_path:
+            shutil.copy(result, output_path)
+            result.unlink()
+        return output_path
+
+    def _on_mscz_done(self, result):
+        self._set_busy(False)
+        self._status_label.setText(f"MSCZ 已导出: {result.name}")
 
     # ── 批量扒谱 ──────────────────────────────
 
@@ -313,6 +348,8 @@ class MainWindow(QMainWindow):
     def _set_busy(self, busy: bool):
         self._btn_import.setEnabled(not busy)
         self._btn_transcribe.setEnabled(not busy)
+        self._btn_export_midi.setEnabled(not busy)
+        self._btn_export_mscz.setEnabled(not busy)
         self._progress.setVisible(busy)
         if busy:
             self._progress.setRange(0, 0)  # 不确定进度条
