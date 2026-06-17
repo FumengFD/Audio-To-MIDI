@@ -70,9 +70,6 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(self._btn_import)
         toolbar.addWidget(self._btn_transcribe)
         toolbar.addWidget(self._btn_export_midi)
-        self._btn_export_mscz = QPushButton("📄 导出 MSCZ")
-        self._btn_export_mscz.clicked.connect(self._on_export_mscz)
-        toolbar.addWidget(self._btn_export_mscz)
         toolbar.addWidget(self._btn_batch)
         toolbar.addWidget(QLabel(" BPM:"))
         self._bpm_input = QSpinBox()
@@ -261,7 +258,7 @@ class MainWindow(QMainWindow):
             self._status_label.setText(f"MIDI 已导出: {Path(path).name}")
 
         self._set_busy(False)
-        self._status_label.setText(f"MSCZ 已导出: {result.name}")
+        self._status_label.setText(f"转录完成")
 
     # ── 批量扒谱 ──────────────────────────────
 
@@ -340,7 +337,7 @@ class MainWindow(QMainWindow):
         self._piano_roll.set_midi(pm)
 
     def closeEvent(self, event):
-        for attr in ["_worker", "_batch_worker", "_mscz_worker"]:
+        for attr in ["_worker", "_batch_worker", ""]:
             w = getattr(self, attr, None)
             if w and w.isRunning():
                 w.stop()
