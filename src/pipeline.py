@@ -1,8 +1,9 @@
-"""总管线编排 — Demucs 分轨 → 专用模型转录 → 量化 → 输出各轨 MIDI"""
+"""总管线编排 — Demucs 分轨 → 专用模型转录 → 合并总谱 → 输出各轨+总谱"""
 
 from pathlib import Path
 import pretty_midi
 
+from .midi.merger import merge_midi
 from .midi.quantizer import quantize_midi
 from .separation.demucs_runner import DemucsSeparator
 from .transcription.base import StemType, TrackResult
@@ -46,8 +47,8 @@ class TranscriptionPipeline:
             "guitar": StemType.GUITAR, "piano": StemType.PIANO,
         }
 
+        # 转录各轨
         track_results = []
-        midi_files = []
         for key in enabled_stems:
             st = stem_map.get(key)
             if st is None or st not in separation.stems:
@@ -60,18 +61,26 @@ class TranscriptionPipeline:
             else:
                 r = self.melodic_transcriber.transcribe(sp, output_dir=output_dir, stem_type=st)
             track_results.append(r)
-            if r.midi_path:
-                # 量化各轨 MIDI
-                try:
-                    pm = pretty_midi.PrettyMIDI(str(r.midi_path))
-                    pm = quantize_midi(pm, bpm=bpm)
-                    pm.write(str(r.midi_path))
-                except Exception:
-                    pass
-                midi_files.append(r.midi_path)
+
+        # 合并总谱
+        merged_path = output_dir / f"{audio_path.stem}_score.mid"
+        merged = merge_midi(track_results, merged_path, bpm=bpm)
+
+        # 各轨也写入统一 BPM
+        if bpm:
+            for tr in track_results:
+                if tr.midi_path and tr.midi_path.exists():
+                    try:
+                        pm = pretty_midi.PrettyMIDI(str(tr.midi_path))
+                        fixed = pretty_midi.PrettyMIDI(initial_tempo=bpm)
+                        for inst in pm.instruments:
+                            fixed.instruments.append(inst)
+                        fixed.write(str(tr.midi_path))
+                    except Exception:
+                        pass
 
         return {
-            "midi_files": midi_files,
+            "merged_path": merged_path,
             "track_results": track_results,
             "bpm": bpm,
         }
