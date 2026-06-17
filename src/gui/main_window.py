@@ -333,8 +333,7 @@ class MainWindow(QMainWindow):
             self._progress.setRange(0, 100)
 
     def _load_piano_roll(self, midi_path: Path):
-        pm = pretty_midi.PrettyMIDI(str(midi_path))
-        self._piano_roll.set_midi(pm)
+        return pretty_midi.PrettyMIDI(str(midi_path))
 
     def closeEvent(self, event):
         for attr in ["_worker", "_batch_worker", ""]:
