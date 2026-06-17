@@ -78,6 +78,7 @@ class MainWindow(QMainWindow):
         self._bpm_input.setValue(0)
         self._bpm_input.setSuffix(" (自动)")
         self._bpm_input.setSpecialValueText("自动")
+        self._bpm_input.setKeyboardTracking(False)  # 每次按键都生效
         self._bpm_input.valueChanged.connect(lambda v: self._bpm_input.setSuffix("" if v==0 else " (手动)"))
         toolbar.addWidget(self._bpm_input)
 
@@ -194,7 +195,6 @@ class MainWindow(QMainWindow):
         self._set_busy(True)
         self._status_label.setText("正在扒谱…")
         enabled = self._track_list.enabled_stems()
-        self._bpm_input.interpretText()  # 强制提交输入的文字
         bpm = self._bpm_input.value() or None  # 0 = 自动
         self._worker = WorkerThread(self._pipeline.run, self._audio_path, self._output_dir, enabled, bpm)
         self._worker.finished.connect(self._on_transcribe_done)
