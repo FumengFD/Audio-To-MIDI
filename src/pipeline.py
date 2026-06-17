@@ -76,6 +76,18 @@ class TranscriptionPipeline:
         else:
             pm.write(str(quantized))
 
+        # 给所有分轨 MIDI 也覆写 BPM
+        if bpm:
+            for midi_file in output_dir.glob("*.mid"):
+                try:
+                    orig = pretty_midi.PrettyMIDI(str(midi_file))
+                    fixed = pretty_midi.PrettyMIDI(initial_tempo=bpm)
+                    for inst in orig.instruments:
+                        fixed.instruments.append(inst)
+                    fixed.write(str(midi_file))
+                except Exception:
+                    pass
+
         return {
             "midi_path": quantized,
             "track_results": track_results,
