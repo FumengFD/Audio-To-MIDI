@@ -1,8 +1,9 @@
-"""总管线编排 — Demucs 分轨 → 专用模型转录 → 输出各轨 MIDI"""
+"""总管线编排 — Demucs 分轨 → 专用模型转录 → 量化 → 输出各轨 MIDI"""
 
 from pathlib import Path
 import pretty_midi
 
+from .midi.quantizer import quantize_midi
 from .separation.demucs_runner import DemucsSeparator
 from .transcription.base import StemType, TrackResult
 from .transcription.drum import DrumTranscriber
@@ -60,20 +61,14 @@ class TranscriptionPipeline:
                 r = self.melodic_transcriber.transcribe(sp, output_dir=output_dir, stem_type=st)
             track_results.append(r)
             if r.midi_path:
-                midi_files.append(r.midi_path)
-
-        # 覆写 BPM
-        if bpm:
-            for midi_file in midi_files:
+                # 量化各轨 MIDI
                 try:
-                    orig = pretty_midi.PrettyMIDI(str(midi_file))
-                    fixed = pretty_midi.PrettyMIDI(initial_tempo=bpm)
-                    for inst in orig.instruments:
-                        fixed.instruments.append(inst)
-                    fixed.write(str(midi_file))
-                except Exception as e:
-                    import logging
-                    logging.getLogger(__name__).warning(f"BPM rewrite failed for {midi_file.name}: {e}")
+                    pm = pretty_midi.PrettyMIDI(str(r.midi_path))
+                    pm = quantize_midi(pm, bpm=bpm)
+                    pm.write(str(r.midi_path))
+                except Exception:
+                    pass
+                midi_files.append(r.midi_path)
 
         return {
             "midi_files": midi_files,
