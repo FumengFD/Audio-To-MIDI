@@ -1,6 +1,15 @@
 # 🎵 Audio-To-MIDI
 
 音频文件转mid文件 — 多乐器音源分离 + 分轨转录 → MIDI。
+MIDI可导入[MuseScore](https://musescore.com/)显示谱面。
+
+## 使用模型
+| 模型 | 用途 |
+|------|------|
+| [Demucs](https://github.com/facebookresearch/demucs) | 音源分离 |
+| [ADTOF-pytorch](https://github.com/xavriley/ADTOF-pytorch) | 鼓组转录 |
+| [Basic Pitch](https://github.com/spotify/basic-pitch) | 旋律转录 |
+| [Transkun](https://github.com/Natooz/Transkun) | 钢琴转录 |
 
 ## 管线
 
