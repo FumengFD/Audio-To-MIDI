@@ -153,9 +153,9 @@ def collect_notes(track):
     return notes
 
 def q_tick(t, g): return int(round(t / g)) * g
-def q_dur(d, g): return max(g, int(round(d / g)) * g)
 
 def fix_overlaps(notes):
+    """保留重叠音符，只把严格重叠的同音高前面音符截短，不删除"""
     by_pitch = defaultdict(list)
     for i, (s, d, p, v) in enumerate(notes):
         by_pitch[p].append((s, d, i, v))
@@ -163,15 +163,17 @@ def fix_overlaps(notes):
     for p, grp in by_pitch.items():
         grp.sort(key=lambda x: x[0])
         for j in range(len(grp) - 1):
-            sa, da, ia, va = grp[j]; sb, db, ib, vb = grp[j+1]
-            if sb <= sa + da:
+            sa, da, ia, va = grp[j]
+            sb, db, ib, vb = grp[j+1]
+            if sb < sa + da:
+                # 截短前一个音符，但保留至少 1 个量化单位的时值
                 nd = sb - sa
-                if nd > 0: adj[ia] = min(adj.get(ia, da), nd)
-                else: adj[ia] = 0
+                if nd > QUANTIZE_GRID:
+                    adj[ia] = nd
+                # 不删除音符
     res = []
     for i, (s, d, p, v) in enumerate(notes):
         if i in adj:
-            if adj[i] <= 0: continue
             d = adj[i]
         res.append((s, d, p, v))
     return res
@@ -183,7 +185,7 @@ def quantize_midi_file(input_path, output_path):
 
     mid = resample_midi(mid)
     new_tracks = []
-    stats = {'orig': 0, 'out': 0, 'overlap': 0}
+    stats = {'orig': 0, 'out': 0}
 
     for ti, track in enumerate(mid.tracks):
         if not any(m.type == 'note_on' for m in track):
@@ -192,19 +194,14 @@ def quantize_midi_file(input_path, output_path):
         notes = collect_notes(track)
         stats['orig'] += len(notes)
 
+        # 只量化起始时间，保留原有时值
         for i in range(len(notes)):
             s, d, p, v = notes[i]
-            notes[i] = (q_tick(s, QUANTIZE_GRID), d, p, v)
+            snapped = q_tick(s, QUANTIZE_GRID)
+            shift = snapped - s
+            notes[i] = (snapped, d + shift, p, v)  # 等量平移，时值不变
         notes.sort(key=lambda x: x[0])
-        before = len(notes)
         notes = fix_overlaps(notes)
-        stats['overlap'] += before - len(notes)
-        for i in range(len(notes)):
-            s, d, p, v = notes[i]
-            notes[i] = (s, q_dur(d, QUANTIZE_GRID), p, v)
-
-        before = len(notes)
-        notes = [(s, d, p, v) for s, d, p, v in notes if d >= MIN_NOTE_TICKS and v >= VELOCITY_MIN]
         stats['out'] += len(notes)
 
         nt = mido.MidiTrack()
@@ -214,7 +211,7 @@ def quantize_midi_file(input_path, output_path):
         events = []
         for s, d, p, v in notes:
             events.append((s, 'on', p, v))
-            events.append((s + d, 'off', p, 0))
+            events.append((max(0, s + d), 'off', p, 0))
         events.sort(key=lambda x: (x[0], 0 if x[1] == 'off' else 1))
         last = 0
         for tick, et, p, v in events:
@@ -229,7 +226,7 @@ def quantize_midi_file(input_path, output_path):
 
     mid.tracks = new_tracks
     mid.save(output_path)
-    print(f"  Orig={stats['orig']} -> {stats['out']} (overlap removed: {stats['overlap']})")
+    print(f"  Orig={stats['orig']} -> {stats['out']}")
     return stats
 
 
