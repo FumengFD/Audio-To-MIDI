@@ -18,7 +18,7 @@ Thumbs.db
 # MusicTranscriber.exe 已提交
 
 # 扒谱输出
-*_扒谱/
+*_result/
 
 # Python 虚拟环境
 venv/

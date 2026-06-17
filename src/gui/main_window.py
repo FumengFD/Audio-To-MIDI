@@ -187,7 +187,7 @@ class MainWindow(QMainWindow):
             return
 
         # 输出目录：原音频旁边创建 "歌名_扒谱" 文件夹
-        self._output_dir = self._audio_path.parent / f"{self._audio_path.stem}_扒谱"
+        self._output_dir = self._audio_path.parent / f"{self._audio_path.stem}_result"
         self._output_dir.mkdir(parents=True, exist_ok=True)
 
         self._set_busy(True)
@@ -273,7 +273,7 @@ class MainWindow(QMainWindow):
             results.append((f, "处理中…"))
             self._batch_worker.progress.emit(f"批量扒谱 {i+1}/{len(files)}: {f.name}")
 
-            output_dir = f.parent / f"{f.stem}_扒谱"
+            output_dir = f.parent / f"{f.stem}_result"
 
             try:
                 self._pipeline.run(f, output_dir, enabled, bpm)
