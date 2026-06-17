@@ -38,7 +38,7 @@ def main():
     )
 
     app = QApplication(sys.argv)
-    app.setApplicationName("Music Transcriber")
+    app.setApplicationName("Audio-To-MIDI")
     app.setOrganizationName("MusicTranscriber")
 
     window = MainWindow()

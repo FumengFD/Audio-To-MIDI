@@ -32,7 +32,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("🎵 Music Transcriber — 自动扒谱")
+        self.setWindowTitle("Audio-To-MIDI")
         self.setMinimumSize(1200, 750)
         self.setAcceptDrops(True)
 
