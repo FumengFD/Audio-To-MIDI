@@ -81,6 +81,7 @@ class TranscriptionPipeline:
 
         return {
             "merged_path": merged_path,
+            "midi_files": [tr.midi_path for tr in track_results if tr.midi_path],
             "track_results": track_results,
             "bpm": bpm,
         }

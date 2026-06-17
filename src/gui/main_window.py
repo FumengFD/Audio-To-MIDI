@@ -214,9 +214,10 @@ class MainWindow(QMainWindow):
         self._set_busy(False)
 
         merged_path = result.get("merged_path")
+        midi_files = result.get("midi_files", [])
         if merged_path and Path(merged_path).exists():
             self._result_midi_path = Path(merged_path)
-            self._result_midi_paths = [Path(merged_path)]
+            self._result_midi_paths = [Path(f) for f in midi_files]
             self._btn_export_midi.setEnabled(True)
             # 后台加载钢琴卷帘
             self._pr_worker = WorkerThread(self._load_piano_roll_all, [Path(merged_path)])
@@ -246,16 +247,20 @@ class MainWindow(QMainWindow):
         QMessageBox.critical(self, "扒谱失败", msg)
 
     def _on_export_midi(self):
-        if not self._result_midi_path or not self._result_midi_path.exists():
+        if not hasattr(self, '_result_midi_paths') or not self._result_midi_paths:
             return
 
-        path, _ = QFileDialog.getSaveFileName(
-            self, "导出 MIDI", f"{self._result_midi_path.name}", "MIDI (*.mid)",
-        )
-        if path:
-            import shutil
-            shutil.copy(self._result_midi_path, path)
-            self._status_label.setText(f"已导出: {Path(path).name}")
+        export_dir = QFileDialog.getExistingDirectory(self, "选择导出目录")
+        if not export_dir:
+            return
+
+        import shutil
+        export_dir = Path(export_dir)
+        for midi_path in self._result_midi_paths:
+            shutil.copy(midi_path, export_dir / midi_path.name)
+        if self._result_midi_path:
+            shutil.copy(self._result_midi_path, export_dir / self._result_midi_path.name)
+        self._status_label.setText(f"已导出 {len(self._result_midi_paths)} 个 MIDI")
 
         self._set_busy(False)
         self._status_label.setText(f"转录完成")
