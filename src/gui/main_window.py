@@ -146,6 +146,15 @@ class MainWindow(QMainWindow):
             y, sr = librosa.load(str(self._audio_path), sr=None, mono=False)
             self._wave_view.set_audio(y, sr)
             self._btn_transcribe.setEnabled(True)
+
+            # 自动检测 BPM
+            y_mono = y if y.ndim == 1 else y.mean(0)
+            tempo, _ = librosa.beat.beat_track(y=y_mono, sr=sr)
+            if tempo > 0:
+                self._bpm_input.setValue(int(round(tempo)))
+                self._status_label.setText(
+                    f"已加载: {self._audio_path.name}  检测到 {int(round(tempo))} BPM"
+                )
         except Exception as e:
             QMessageBox.critical(self, "加载失败", str(e))
 
