@@ -1,6 +1,6 @@
 # 🎵 Audio-To-MIDI
 
-音频文件转mid文件 — 多乐器音源分离 + 分轨转录 → MIDI。
+音频文件转midi文件 — 多乐器音源分离 + 分轨转录MIDI。
 MIDI可导入[MuseScore](https://musescore.com/)显示谱面。
 
 ## 使用模型
