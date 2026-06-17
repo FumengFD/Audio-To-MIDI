@@ -76,6 +76,11 @@ class TranscriptionPipeline:
         else:
             pm.write(str(quantized))
 
+        # 清理中间文件，只留 quantized.mid 和 .wav 分轨
+        for f in output_dir.glob("*.mid"):
+            if f.name != quantized.name:
+                f.unlink()
+
         return {
             "midi_path": quantized,
             "track_results": track_results,
