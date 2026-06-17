@@ -15,8 +15,7 @@ build/
 Thumbs.db
 
 # 大文件
-*.exe
-MusicTranscriber.exe
+# MusicTranscriber.exe 已提交
 
 # 扒谱输出
 *_扒谱/
