@@ -22,13 +22,6 @@ class BasicPitchTranscriber(BaseTranscriber):
     def __init__(self):
         self._model = None
 
-    @property
-    def model(self):
-        if self._model is None:
-            from basic_pitch.inference import predict
-            self._predict_fn = predict
-        return self._predict_fn
-
     def supports_stem(self, stem_type: StemType) -> bool:
         return stem_type in (StemType.BASS, StemType.VOCALS, StemType.OTHER,
                              StemType.GUITAR, StemType.FULL)
@@ -52,6 +45,8 @@ class BasicPitchTranscriber(BaseTranscriber):
         # Basic Pitch 默认输出路径: <output_dir>/<filename>_basic_pitch.mid
         default_midi = output_dir / f"{audio_path.stem}_basic_pitch.mid"
         if default_midi.exists():
+            if midi_path.exists():
+                midi_path.unlink()
             default_midi.rename(midi_path)
 
         return self._load_midi(midi_path, stem_type)

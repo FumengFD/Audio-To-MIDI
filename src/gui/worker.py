@@ -14,18 +14,17 @@ class WorkerThread(QThread):
         self.func = func
         self.args = args
         self.kwargs = kwargs
-        self._is_running = True
 
     def run(self):
         try:
             result = self.func(*self.args, **self.kwargs)
-            if self._is_running:
-                self.finished.emit(result)
+            self.finished.emit(result)
         except Exception as e:
-            if self._is_running:
-                self.error.emit(str(e))
+            self.error.emit(str(e))
 
     def stop(self):
-        self._is_running = False
-        self.terminate()
-        self.wait(2000)
+        self.requestInterruption()
+        self.wait(3000)
+        if self.isRunning():
+            self.terminate()
+            self.wait(2000)

@@ -28,12 +28,12 @@ class WaveformView(QWidget):
 
         # 降采样以避免绘图卡顿
         max_points = 200_000
+        step = 1
         if len(audio_data) > max_points:
             step = len(audio_data) // max_points
             audio_data = audio_data[::step]
 
-        time_axis = np.arange(len(audio_data)) / sample_rate
-        self._curve.clear()
+        time_axis = np.arange(len(audio_data)) * step / sample_rate
         self._curve.setData(time_axis, audio_data, fillLevel=0, brush=(0, 200, 255, 80))
         self._plot.autoRange()
 

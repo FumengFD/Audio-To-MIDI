@@ -10,7 +10,7 @@ class MidiQuantizer:
     def quantize(
         self,
         midi: pretty_midi.PrettyMIDI,
-        resolution: float = 0.125,  # 默认八分音符 (1/8 = 0.125 拍)
+        resolution: float = 0.125,  # 三十二分音符精度 (1/32 = 0.125 拍)
         min_duration: float = 0.02,  # 最短音符时长 (秒)
         min_velocity: int = 10,      # 最弱力度
         bpm: float | None = None,    # 手动指定 BPM，None=自动检测

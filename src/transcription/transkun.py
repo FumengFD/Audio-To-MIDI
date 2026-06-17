@@ -33,7 +33,7 @@ def _get_transkun_model():
     TransKun = conf_manager["Model"].module.TransKun
     conf = conf_manager["Model"].config
 
-    checkpoint = torch.load(weight_path, map_location="cpu")
+    checkpoint = torch.load(weight_path, map_location="cpu", weights_only=False)
     model = TransKun(conf=conf)
     if "best_state_dict" in checkpoint:
         model.load_state_dict(checkpoint["best_state_dict"], strict=False)
@@ -50,9 +50,10 @@ class TranskunTranscriber(BaseTranscriber):
     """使用 Transkun 进行高精度钢琴转录"""
 
     def supports_stem(self, stem_type: StemType) -> bool:
-        return stem_type in (StemType.OTHER, StemType.FULL)
+        return stem_type in (StemType.OTHER, StemType.PIANO, StemType.FULL)
 
     def transcribe(self, audio_path: Path, **kwargs) -> TrackResult:
+        stem_type = kwargs.get("stem_type", StemType.OTHER)
         output_dir = kwargs.get("output_dir", Path("."))
         output_dir = Path(output_dir)
         midi_path = output_dir / f"{audio_path.stem}_piano_transkun.mid"
@@ -63,7 +64,8 @@ class TranskunTranscriber(BaseTranscriber):
         import pydub
         audio = pydub.AudioSegment.from_file(str(audio_path))
         y = np.array(audio.get_array_of_samples(), dtype=np.float32)
-        y = y.reshape(-1, audio.channels) / 2**15
+        max_val = float(1 << (audio.sample_width * 8 - 1))  # 按位深归一化
+        y = y.reshape(-1, audio.channels) / max_val
         fs = audio.frame_rate
 
         # 重采样到模型采样率
@@ -95,7 +97,7 @@ class TranskunTranscriber(BaseTranscriber):
                 ))
 
         return TrackResult(
-            stem_type=StemType.OTHER,
+            stem_type=stem_type,
             notes=notes,
             midi_path=midi_path,
             duration=pm.get_end_time(),

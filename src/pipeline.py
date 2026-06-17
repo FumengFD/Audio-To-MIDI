@@ -76,17 +76,20 @@ class TranscriptionPipeline:
         else:
             pm.write(str(quantized))
 
-        # 给所有分轨 MIDI 也覆写 BPM
+        # 给所有分轨 MIDI 也覆写 BPM（跳过已处理的 quantized）
         if bpm:
             for midi_file in output_dir.glob("*.mid"):
+                if midi_file == quantized:
+                    continue
                 try:
                     orig = pretty_midi.PrettyMIDI(str(midi_file))
                     fixed = pretty_midi.PrettyMIDI(initial_tempo=bpm)
                     for inst in orig.instruments:
                         fixed.instruments.append(inst)
                     fixed.write(str(midi_file))
-                except Exception:
-                    pass
+                except Exception as e:
+                    import logging
+                    logging.getLogger(__name__).warning(f"BPM rewrite failed for {midi_file.name}: {e}")
 
         return {
             "midi_path": quantized,

@@ -14,13 +14,23 @@ import zipfile, random, string
 from pathlib import Path
 from collections import defaultdict
 
-try:
-    sys.stdout = io.TextIOWrapper(sys.stdout.detach(), encoding='utf-8', errors='replace')
-except (ValueError, AttributeError, OSError):
-    pass
+# 自动查找 MuseScore
+def _find_musescore():
+    candidates = [
+        Path(r"C:\Program Files\MuseScore 4\bin\MuseScore4.exe"),
+        Path(os.environ.get("LOCALAPPDATA", "")) / r"Programs\MuseScore 4\bin\MuseScore4.exe",
+        Path(r"C:\Program Files\MuseScore 3\bin\MuseScore3.exe"),
+        "musescore4", "MuseScore4", "musescore3", "MuseScore3",
+    ]
+    for c in candidates:
+        if isinstance(c, str):
+            import shutil as sh
+            if sh.which(c): return c
+        elif isinstance(c, Path) and c.exists():
+            return str(c)
+    raise FileNotFoundError("MuseScore not found. Install MuseScore 4.")
 
-# ─── Config ────────────────────────────────────────
-MUSESCORE_CLI = r"C:\Program Files\MuseScore 4\bin\MuseScore4.exe"
+MUSESCORE_CLI = _find_musescore()
 TARGET_TPB = 480
 QUANTIZE_GRID = 120        # 16th note
 MIN_NOTE_TICKS = 15
@@ -260,56 +270,61 @@ def fix_one_instrument(inst_el, muse_id, hint=None):
         el.text = val
 
 def fix_mscz_instruments(mscz_path, midi_ref=None):
-    extract = Path(mscz_path).parent / '_tmp_inst'
+    extract = Path(mscz_path).parent / f'_tmp_inst_{os.getpid()}_{id(mscz_path) % 10000}'
     if extract.exists(): shutil.rmtree(extract)
     with zipfile.ZipFile(mscz_path, 'r') as zf:
         zf.extractall(extract)
 
-    mscx = list(extract.glob('*.mscx'))[0]
-    gm = read_midi_programs(midi_ref) if midi_ref else {}
+    try:
+        mscx = list(extract.glob('*.mscx'))
+        if not mscx:
+            return 0
+        mscx = mscx[0]
+        gm = read_midi_programs(midi_ref) if midi_ref else {}
 
-    tree = ET.parse(str(mscx)); root = tree.getroot(); score = root.find('Score')
-    parts = score.findall('Part'); staffs = score.findall('Staff')
-    idx = 0; changed = 0
+        tree = ET.parse(str(mscx)); root = tree.getroot(); score = root.find('Score')
+        parts = score.findall('Part'); staffs = score.findall('Staff')
+        idx = 0; changed = 0
 
-    for part in parts:
-        n = len(part.findall('Staff'))
-        pid = part.get('id'); inst = part.find('Instrument')
-        if inst is None: idx += n; continue
+        for part in parts:
+            n = len(part.findall('Staff'))
+            pid = part.get('id'); inst = part.find('Instrument')
+            if inst is None: idx += n; continue
 
-        cur = inst.get('id', '')
-        if cur and cur not in ('piano', 'grand-piano', 'keyboard') and cur in INSTRUMENT_NAMES and cur != 'piano':
-            print(f"  Part {pid}: {cur} OK")
-            idx += n; continue
+            cur = inst.get('id', '')
+            if cur and cur not in ('piano', 'grand-piano', 'keyboard') and cur in INSTRUMENT_NAMES and cur != 'piano':
+                print(f"  Part {pid}: {cur} OK")
+                idx += n; continue
 
-        correct = FALLBACK_MAPPING.get(pid)
-        if correct is None and gm:
-            channels = [c for c in sorted(gm) if c != 9]
-            pi = int(pid) - 1
-            if pi < len(channels):
-                correct = GM_TO_MUSE.get(gm[channels[pi]])
-        if correct is None:
-            idx += n; continue
+            correct = FALLBACK_MAPPING.get(pid)
+            if correct is None and gm:
+                channels = [c for c in sorted(gm) if c != 9]
+                pi = int(pid) - 1
+                if pi < len(channels):
+                    correct = GM_TO_MUSE.get(gm[channels[pi]])
+            if correct is None:
+                idx += n; continue
 
-        fix_one_instrument(inst, correct)
-        names = INSTRUMENT_NAMES.get(correct)
-        if names:
-            te = part.find('trackName')
-            if te is not None: te.text = names[0]
-        print(f"  Part {pid}: {cur} -> {correct}")
-        changed += 1
-        idx += n
+            fix_one_instrument(inst, correct)
+            names = INSTRUMENT_NAMES.get(correct)
+            if names:
+                te = part.find('trackName')
+                if te is not None: te.text = names[0]
+            print(f"  Part {pid}: {cur} -> {correct}")
+            changed += 1
+            idx += n
 
-    if changed:
-        xml_str = ET.tostring(root, encoding='unicode')
-        if not xml_str.startswith('<?xml'): xml_str = '<?xml version="1.0" encoding="UTF-8"?>\n' + xml_str
-        with open(mscx, 'w', encoding='utf-8') as f: f.write(xml_str)
-        with zipfile.ZipFile(mscz_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-            for dp, _, fns in os.walk(extract):
-                for fn in fns:
-                    fp = os.path.join(dp, fn)
-                    zf.write(fp, os.path.relpath(fp, extract))
-    shutil.rmtree(extract)
+        if changed:
+            xml_str = ET.tostring(root, encoding='unicode')
+            if not xml_str.startswith('<?xml'): xml_str = '<?xml version="1.0" encoding="UTF-8"?>\n' + xml_str
+            with open(mscx, 'w', encoding='utf-8') as f: f.write(xml_str)
+            with zipfile.ZipFile(mscz_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+                for dp, _, fns in os.walk(extract):
+                    for fn in fns:
+                        fp = os.path.join(dp, fn)
+                        zf.write(fp, os.path.relpath(fp, extract))
+    finally:
+        shutil.rmtree(extract, ignore_errors=True)
     return changed
 
 
@@ -415,53 +430,60 @@ def adjust_style(extract_dir):
     with open(mss, 'w', encoding='utf-8') as f: f.write(text)
 
 def cleanup_mscz(mscz_path, output_path):
-    extract = Path(mscz_path).parent / '_tmp_clean'
+    extract = Path(mscz_path).parent / f'_tmp_clean_{os.getpid()}_{id(mscz_path) % 10000}'
     if extract.exists(): shutil.rmtree(extract)
     with zipfile.ZipFile(mscz_path, 'r') as zf: zf.extractall(extract)
-    mscx = list(extract.glob('*.mscx'))[0]
-    print(f"Processing: {mscx.name}")
 
-    with open(mscx, 'r', encoding='utf-8') as f: xml_text = f.read()
-    root = ET.fromstring(xml_text); score = root.find('Score')
-    smap = build_staff_map(score)
+    try:
+        mscx = list(extract.glob('*.mscx'))
+        if not mscx:
+            return
+        mscx = mscx[0]
+        print(f"Processing: {mscx.name}")
 
-    for part, staffs in smap:
-        track = part.findtext('trackName', '?')
-        nm = len(staffs[0].findall('Measure')) if staffs else 0
-        grp = ''
-        st = part.find('Staff')
-        if st is not None:
-            stt = st.find('StaffType')
-            grp = stt.get('group', '') if stt is not None else ''
-        print(f"  Part {part.get('id')}: {track} [{grp}] {nm}m")
+        with open(mscx, 'r', encoding='utf-8') as f: xml_text = f.read()
+        root = ET.fromstring(xml_text); score = root.find('Score')
+        smap = build_staff_map(score)
 
-    print("[1/3] Breaks...")
-    breaks = compute_breaks(smap)
-    print(f"  {len(breaks)} breaks at: {[b+1 for b in breaks]}")
-    for _, staffs in smap: add_breaks(staffs, breaks)
+        for part, staffs in smap:
+            track = part.findtext('trackName', '?')
+            nm = len(staffs[0].findall('Measure')) if staffs else 0
+            grp = ''
+            staff_el = part.find('Staff')
+            if staff_el is not None:
+                stt = staff_el.find('StaffType')
+                grp = stt.get('group', '') if stt is not None else ''
+            print(f"  Part {part.get('id')}: {track} [{grp}] {nm}m")
 
-    print("[2/3] Dynamics...")
-    td = 0
-    for part, staffs in smap:
-        st = part.find('Staff').find('StaffType')
-        if st is None or st.get('group') != 'pitched' or not staffs: continue
-        n = add_dynamics(staffs); td += n
-        print(f"  Part {part.get('id')}: {n}")
-    print(f"  Total: {td}")
+        print("[1/3] Breaks...")
+        breaks = compute_breaks(smap)
+        print(f"  {len(breaks)} breaks at: {[b+1 for b in breaks]}")
+        for _, staffs in smap: add_breaks(staffs, breaks)
 
-    print("[3/3] Style...")
-    adjust_style(extract)
+        print("[2/3] Dynamics...")
+        td = 0
+        for part, staffs in smap:
+            staff_el = part.find('Staff')
+            st = staff_el.find('StaffType') if staff_el is not None else None
+            if st is None or st.get('group') != 'pitched' or not staffs: continue
+            n = add_dynamics(staffs); td += n
+            print(f"  Part {part.get('id')}: {n}")
+        print(f"  Total: {td}")
 
-    xml_str = ET.tostring(root, encoding='unicode')
-    if not xml_str.startswith('<?xml'): xml_str = '<?xml version="1.0" encoding="UTF-8"?>\n' + xml_str
-    with open(mscx, 'w', encoding='utf-8') as f: f.write(xml_str)
+        print("[3/3] Style...")
+        adjust_style(extract)
 
-    with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-        for dp, _, fns in os.walk(extract):
-            for fn in fns:
-                fp = os.path.join(dp, fn)
-                zf.write(fp, os.path.relpath(fp, extract))
-    shutil.rmtree(extract)
+        xml_str = ET.tostring(root, encoding='unicode')
+        if not xml_str.startswith('<?xml'): xml_str = '<?xml version="1.0" encoding="UTF-8"?>\n' + xml_str
+        with open(mscx, 'w', encoding='utf-8') as f: f.write(xml_str)
+
+        with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for dp, _, fns in os.walk(extract):
+                for fn in fns:
+                    fp = os.path.join(dp, fn)
+                    zf.write(fp, os.path.relpath(fp, extract))
+    finally:
+        shutil.rmtree(extract, ignore_errors=True)
     print(f"  Done: {Path(output_path).name}")
 
 

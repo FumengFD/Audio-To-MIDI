@@ -4,6 +4,7 @@ from pathlib import Path
 
 import librosa
 import pretty_midi
+import re
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFileDialog,
@@ -13,9 +14,9 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QSpinBox,
     QSplitter,
     QStatusBar,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -74,15 +75,13 @@ class MainWindow(QMainWindow):
         self._btn_export_mscz.setEnabled(False)
         toolbar.addWidget(self._btn_export_mscz)
         toolbar.addWidget(self._btn_batch)
-        from PySide6.QtWidgets import QSpinBox
-
         toolbar.addWidget(QLabel(" BPM:"))
         self._bpm_input = QSpinBox()
         self._bpm_input.setRange(0, 300)
         self._bpm_input.setValue(0)
         self._bpm_input.setSuffix(" (自动)")
         self._bpm_input.setSpecialValueText("自动")
-        self._bpm_input.setKeyboardTracking(False)  # 每次按键都生效
+        self._bpm_input.setKeyboardTracking(False)  # 松手后才更新，避免频繁触发
         self._bpm_input.valueChanged.connect(lambda v: self._bpm_input.setSuffix("" if v==0 else " (手动)"))
         toolbar.addWidget(self._bpm_input)
 
@@ -141,28 +140,38 @@ class MainWindow(QMainWindow):
 
     def _load_audio(self, path: Path):
         self._audio_path = path
-        self._status_label.setText(f"已加载: {self._audio_path.name}")
-        self._bpm_input.setValue(0)  # 重置 BPM 为自动
+        self._status_label.setText(f"加载中: {path.name}")
+        self._bpm_input.setValue(0)
         self._piano_roll.clear()
         self._result_midi = None
         self._result_midi_path = None
         self._btn_export_midi.setEnabled(False)
-        try:
-            y, sr = librosa.load(str(self._audio_path), sr=None, mono=False)
-            self._wave_view.set_audio(y, sr)
-            self._btn_transcribe.setEnabled(True)
+        self._btn_transcribe.setEnabled(False)
 
-            # 自动检测 BPM
-            y_mono = y if y.ndim == 1 else y.mean(0)
-            tempo, _ = librosa.beat.beat_track(y=y_mono, sr=sr)
-            if tempo > 0:
-                bpm = int(round(float(tempo)))
-                self._bpm_input.setValue(bpm)
-                self._status_label.setText(
-                    f"已加载: {self._audio_path.name}  检测到 {bpm} BPM"
-                )
-        except Exception as e:
-            QMessageBox.critical(self, "加载失败", str(e))
+        self._set_busy(True)
+        self._load_worker = WorkerThread(self._do_load_audio, path)
+        self._load_worker.finished.connect(self._on_load_done)
+        self._load_worker.error.connect(lambda e: (self._set_busy(False), QMessageBox.critical(self, "加载失败", str(e))))
+        self._load_worker.start()
+
+    @staticmethod
+    def _do_load_audio(path: Path):
+        y, sr = librosa.load(str(path), sr=None, mono=False)
+        y_mono = y if y.ndim == 1 else y.mean(0)
+        tempo, _ = librosa.beat.beat_track(y=y_mono, sr=sr)
+        bpm = int(round(float(tempo))) if tempo > 0 else 0
+        return {"y": y, "sr": sr, "bpm": bpm}
+
+    def _on_load_done(self, result: dict):
+        self._set_busy(False)
+        self._wave_view.set_audio(result["y"], result["sr"])
+        self._btn_transcribe.setEnabled(True)
+        bpm = result["bpm"]
+        if bpm:
+            self._bpm_input.setValue(bpm)
+            self._status_label.setText(f"已加载: {self._audio_path.name}  {bpm} BPM")
+        else:
+            self._status_label.setText(f"已加载: {self._audio_path.name}")
 
     # ── 拖拽导入 ──────────────────────────────
 
@@ -208,15 +217,16 @@ class MainWindow(QMainWindow):
     def _on_transcribe_done(self, result: dict):
         self._set_busy(False)
 
-        # 更新钢琴卷帘
         midi_path = result.get("midi_path")
-        if midi_path:
+        if midi_path and Path(midi_path).exists():
             self._result_midi_path = Path(midi_path)
-            pm = pretty_midi.PrettyMIDI(str(midi_path))
-            self._piano_roll.set_midi(pm)
-            self._result_midi = pm
             self._btn_export_midi.setEnabled(True)
             self._btn_export_mscz.setEnabled(True)
+            self._result_midi = None
+            # 后台加载钢琴卷帘
+            self._pr_worker = WorkerThread(self._load_piano_roll, Path(midi_path))
+            self._pr_worker.finished.connect(lambda pm: self._piano_roll.set_midi(pm))
+            self._pr_worker.start()
 
 
         self._status_label.setText(f"扒谱完成 — {self._output_dir}")
@@ -236,7 +246,9 @@ class MainWindow(QMainWindow):
 
     def _on_transcribe_error(self, msg: str):
         self._set_busy(False)
-        self._status_label.setText("扒谱失败 ❌")
+        self._btn_export_midi.setEnabled(False)
+        self._btn_export_mscz.setEnabled(False)
+        self._status_label.setText("转录失败 ❌")
         QMessageBox.critical(self, "扒谱失败", msg)
 
     def _on_export_midi(self):
@@ -266,12 +278,12 @@ class MainWindow(QMainWindow):
         self._progress.show()
         self._mscz_worker = WorkerThread(self._run_midi2mscz, self._result_midi_path, Path(path))
         self._mscz_worker.finished.connect(lambda p: self._on_mscz_done(p))
-        self._mscz_worker.error.connect(lambda e: QMessageBox.critical(self, "MSCZ 失败", str(e)))
+        self._mscz_worker.error.connect(lambda e: (self._set_busy(False), QMessageBox.critical(self, "MSCZ 失败", str(e))))
         self._mscz_worker.start()
 
     @staticmethod
     def _run_midi2mscz(midi_path: Path, output_path: Path) -> Path:
-        from src.score.midi2mscz import pipeline_midi
+        from .score.midi2mscz import pipeline_midi
         import shutil
         result = pipeline_midi(midi_path)
         if result != output_path:
@@ -325,7 +337,6 @@ class MainWindow(QMainWindow):
     def _on_batch_progress(self, msg: str):
         self._status_label.setText(msg)
         # 从消息里提取当前进度
-        import re
         m = re.search(r"(\d+)/(\d+)", msg)
         if m:
             self._progress.setValue(int(m.group(1)))
@@ -350,14 +361,19 @@ class MainWindow(QMainWindow):
         self._btn_transcribe.setEnabled(not busy)
         self._btn_export_midi.setEnabled(not busy)
         self._btn_export_mscz.setEnabled(not busy)
+        self._btn_batch.setEnabled(not busy)
         self._progress.setVisible(busy)
         if busy:
             self._progress.setRange(0, 0)  # 不确定进度条
         else:
             self._progress.setRange(0, 100)
 
+    def _load_piano_roll(self, midi_path: Path):
+        pm = pretty_midi.PrettyMIDI(str(midi_path))
+        self._piano_roll.set_midi(pm)
+
     def closeEvent(self, event):
-        for attr in ["_worker", "_batch_worker"]:
+        for attr in ["_worker", "_batch_worker", "_mscz_worker"]:
             w = getattr(self, attr, None)
             if w and w.isRunning():
                 w.stop()

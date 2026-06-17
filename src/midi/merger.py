@@ -41,7 +41,6 @@ class MidiMerger:
             if not tr.notes:
                 continue
 
-            channel = STEM_CHANNEL_MAP.get(tr.stem_type, 2)
             program = STEM_PROGRAM_MAP.get(tr.stem_type, 0)
 
             if tr.stem_type == StemType.DRUMS:
