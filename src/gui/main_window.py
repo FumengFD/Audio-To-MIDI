@@ -252,7 +252,7 @@ class MainWindow(QMainWindow):
         QMessageBox.critical(self, "扒谱失败", msg)
 
     def _on_export_midi(self):
-        if self._result_midi is None:
+        if self._result_midi_path is None:
             return
 
         path, _ = QFileDialog.getSaveFileName(
