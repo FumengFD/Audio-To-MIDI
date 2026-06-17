@@ -137,6 +137,11 @@ class MainWindow(QMainWindow):
     def _load_audio(self, path: Path):
         self._audio_path = path
         self._status_label.setText(f"已加载: {self._audio_path.name}")
+        self._bpm_input.setValue(0)  # 重置 BPM 为自动
+        self._piano_roll.clear()
+        self._result_midi = None
+        self._result_midi_path = None
+        self._btn_export_midi.setEnabled(False)
         try:
             y, sr = librosa.load(str(self._audio_path), sr=None, mono=False)
             self._wave_view.set_audio(y, sr)
@@ -179,6 +184,7 @@ class MainWindow(QMainWindow):
         self._set_busy(True)
         self._status_label.setText("正在扒谱…")
         enabled = self._track_list.enabled_stems()
+        self._bpm_input.interpretText()  # 强制提交输入的文字
         bpm = self._bpm_input.value() or None  # 0 = 自动
         self._worker = WorkerThread(self._pipeline.run, self._audio_path, self._output_dir, enabled, bpm)
         self._worker.finished.connect(self._on_transcribe_done)
@@ -244,20 +250,20 @@ class MainWindow(QMainWindow):
         self._progress.setRange(0, len(files))
         self._progress.show()
 
-        self._batch_worker = WorkerThread(self._process_batch, files)
+        self._batch_worker = WorkerThread(self._process_batch, files,
+                                           self._bpm_input.value() or None,
+                                           self._track_list.enabled_stems())
         self._batch_worker.progress.connect(self._on_batch_progress)
         self._batch_worker.finished.connect(self._on_batch_done)
         self._batch_worker.error.connect(self._on_batch_error)
         self._batch_worker.start()
 
-    def _process_batch(self, files: list[Path]) -> list[tuple[Path, str]]:
+    def _process_batch(self, files: list[Path], bpm, enabled) -> list[tuple[Path, str]]:
         results = []
         for i, f in enumerate(files):
             results.append((f, "处理中…"))
             self._batch_worker.progress.emit(f"批量扒谱 {i+1}/{len(files)}: {f.name}")
 
-            bpm = self._bpm_input.value() or None
-            enabled = self._track_list.enabled_stems()
             output_dir = f.parent / f"{f.stem}_扒谱"
 
             try:
