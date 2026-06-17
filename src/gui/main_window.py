@@ -283,7 +283,7 @@ class MainWindow(QMainWindow):
 
     @staticmethod
     def _run_midi2mscz(midi_path: Path, output_path: Path) -> Path:
-        from .score.midi2mscz import pipeline_midi
+        from ..score.midi2mscz import pipeline_midi
         import shutil
         result = pipeline_midi(midi_path)
         if result != output_path:
