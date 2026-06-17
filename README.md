@@ -20,7 +20,6 @@ FLAC/MP3/WAV → Demucs 分轨 → 分轨转录 → MIDI 合并 + 量化 → MID
 - 🎹 钢琴专用转录 (Transkun, 98.3% F1)
 - 🎸 贝斯/人声/吉他 (Basic Pitch)
 - 📐 MIDI 节拍量化 + 手动 BPM
-- 📂 批量扒谱 + 拖拽导入
 - 💾 导出 MIDI
 
 ## 依赖
@@ -79,7 +78,7 @@ pip install transformers==4.48.3
 python -m src.main
 ```
 
-或双击 `MusicTranscriber.exe`
+或双击 `Audio-To-MIDI.exe`
 
 ## 支持的格式
 
