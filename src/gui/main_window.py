@@ -215,6 +215,10 @@ class MainWindow(QMainWindow):
 
 
         self._status_label.setText(f"扒谱完成 — {self._output_dir}")
+        if result.get("bpm"):
+            self._status_label.setText(
+                f"扒谱完成 (BPM={result['bpm']}) — {self._output_dir}"
+            )
 
         out_files = "\n".join(
             f"  • {f.name}" for f in sorted(self._output_dir.iterdir())

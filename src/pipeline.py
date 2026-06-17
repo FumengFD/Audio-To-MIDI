@@ -79,4 +79,5 @@ class TranscriptionPipeline:
         return {
             "midi_path": quantized,
             "track_results": track_results,
+            "bpm": bpm,
         }
